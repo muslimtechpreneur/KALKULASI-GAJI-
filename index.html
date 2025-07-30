@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Aplikasi Kalkulator Gaji</title>
+	<link rel="manifest" href="manifest.webmanifest">
+    <!-- Memuat Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Memuat Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Memuat Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" xintegrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- Memuat SheetJS (js-xlsx) untuk Export Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        /* Mencegah scroll pada body, hanya konten page yang scroll */
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a; /* bg-slate-900 */
+        }
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        /* Animasi untuk transisi halaman */
+        .page { display: none; animation: fadeIn 0.3s ease-in-out; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Styling untuk bottom navigation */
+        .nav-item.active i, .nav-item.active span { color: #60a5fa; /* text-blue-400 */ }
+        
+        /* Animasi untuk modal & toast */
+        .modal, .toast, .confirm-dialog { transition: opacity 0.3s ease, transform 0.3s ease; }
+        .hidden-item { opacity: 0; transform: translateY(20px); pointer-events: none; }
+        
+        /* Animasi untuk input error */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .shake {
+            animation: shake 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body class="text-slate-200">
+
+    <!-- Layar Aktivasi -->
+    <div id="activation-screen" class="h-full w-full max-w-lg mx-auto bg-slate-900 flex flex-col items-center justify-center p-8 space-y-6 hidden">
+        <div class="text-center">
+            <i class="fa-solid fa-key text-5xl text-yellow-400"></i>
+            <h1 class="text-2xl font-bold text-white mt-4">Aktivasi Aplikasi</h1>
+            <p class="text-slate-400 mt-2">Silakan masukkan kode lisensi Anda untuk melanjutkan.</p>
+        </div>
+        <div class="w-full">
+            <input type="text" id="license-input" class="w-full bg-slate-800 border-slate-700 border rounded-lg py-3 px-4 text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none text-center" placeholder="KODE-LISENSI-ANDA">
+            <p id="license-error" class="text-red-500 text-sm mt-2 text-center hidden">Kode lisensi tidak valid. Silakan coba lagi.</p>
+        </div>
+        <button id="activate-btn" class="w-full bg-yellow-600 hover:bg-yellow-700 text-slate-900 font-bold py-3 px-4 rounded-xl transition-colors duration-200 shadow-lg">
+            Aktivasi
+        </button>
+        <p class="text-xs text-slate-500 text-center pt-4">Hubungi admin untuk mendapatkan kode lisensi jika Anda belum memilikinya.</p>
+    </div>
+
+    <!-- Kontainer Aplikasi Utama (Awalnya Tersembunyi) -->
+    <div id="app-container" class="h-full w-full max-w-lg mx-auto bg-slate-900 flex-col hidden">
+        
+        <!-- Konten Halaman (Kalkulator atau Pengaturan) -->
+        <main class="flex-grow overflow-y-auto custom-scrollbar">
+            <!-- Halaman Kalkulator -->
+            <div id="page-calculator" class="page active p-4 md:p-6 space-y-6">
+                <div class="text-center">
+                    <h1 class="text-2xl font-bold text-white">Kalkulator Gaji</h1>
+                    <p class="text-slate-400 mt-1 text-sm">Hitung, simpan, dan kelola keuanganmu.</p>
+                </div>
+                <!-- Pemasukan -->
+                <div>
+                    <h2 class="text-md font-semibold mb-3 text-blue-400">Daftar Pemasukan</h2>
+                    <div id="daftar-pemasukan" class="space-y-3"></div>
+                    <button id="tambah-pemasukan-btn" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-xl transition-colors duration-200 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Tambah Pemasukan
+                    </button>
+                </div>
+                <!-- Pengeluaran -->
+                <div>
+                    <h2 class="text-md font-semibold mb-3 text-green-400">Daftar Pengeluaran</h2>
+                    <div id="daftar-pengeluaran" class="space-y-3"></div>
+                    <button id="tambah-pengeluaran-btn" class="mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 px-4 rounded-xl transition-colors duration-200 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Tambah Pengeluaran
+                    </button>
+                </div>
+                <hr class="border-slate-700">
+                <!-- Ringkasan -->
+                <div class="space-y-4">
+                    <h2 class="text-md font-semibold text-yellow-400">Ringkasan</h2>
+                    <div class="bg-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex justify-between items-center text-sm"><span class="text-slate-300">Total Pemasukan:</span><span id="total-pemasukan" class="font-semibold text-blue-300">Rp 0</span></div>
+                        <div class="flex justify-between items-center text-sm"><span class="text-slate-300">Total Pengeluaran:</span><span id="total-pengeluaran" class="font-semibold text-green-300">Rp 0</span></div>
+                        <div class="flex justify-between items-center text-lg mt-2 pt-2 border-t border-slate-700"><span class="font-bold text-white">Sisa Gaji:</span><span id="sisa-gaji" class="font-bold text-white">Rp 0</span></div>
+                    </div>
+                </div>
+                <!-- Tombol Simpan -->
+                <div class="pt-2">
+                    <button id="simpan-rekapan-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition-colors duration-200 flex items-center justify-center gap-2 shadow-lg">
+                        <i class="fa-solid fa-save"></i> Simpan Rekapan
+                    </button>
+                </div>
+                 <!-- Riwayat Rekapan -->
+                <div class="pt-4 space-y-3 pb-20">
+                    <h2 class="text-md font-semibold text-purple-400">Riwayat Rekapan</h2>
+                    <div id="daftar-riwayat" class="space-y-3">
+                        <p id="riwayat-kosong" class="text-slate-500 text-center py-4">Belum ada riwayat.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Halaman Pengaturan -->
+            <div id="page-settings" class="page p-4 md:p-6 space-y-4 pb-20">
+                <div class="text-center mb-4">
+                    <h1 class="text-2xl font-bold text-white">Pengaturan</h1>
+                    <p class="text-slate-400 mt-1 text-sm">Kelola data dan informasi aplikasi.</p>
+                </div>
+                <div class="space-y-2 bg-slate-800 rounded-xl p-2">
+                    <button data-modal="modal-backup" class="w-full text-left flex items-center gap-4 p-3 rounded-lg hover:bg-slate-700 transition-colors">
+                        <i class="fa-solid fa-database w-5 text-center text-blue-400"></i><span>Backup & Restore</span>
+                    </button>
+                    <button data-modal="modal-usage" class="w-full text-left flex items-center gap-4 p-3 rounded-lg hover:bg-slate-700 transition-colors">
+                        <i class="fa-solid fa-question-circle w-5 text-center text-yellow-400"></i><span>Cara Penggunaan</span>
+                    </button>
+                    <a href="mailto:muslimtechpreneur@gmail.com?subject=Kritik%20dan%20Saran%20Aplikasi%20Kalkulator%20Gaji" class="w-full text-left flex items-center gap-4 p-3 rounded-lg hover:bg-slate-700 transition-colors">
+                        <i class="fa-solid fa-paper-plane w-5 text-center text-green-400"></i><span>Kritik dan Saran</span>
+                    </a>
+                    <button data-modal="modal-about" class="w-full text-left flex items-center gap-4 p-3 rounded-lg hover:bg-slate-700 transition-colors">
+                        <i class="fa-solid fa-info-circle w-5 text-center text-indigo-400"></i><span>Tentang Aplikasi</span>
+                    </button>
+                     <button data-modal="modal-privacy" class="w-full text-left flex items-center gap-4 p-3 rounded-lg hover:bg-slate-700 transition-colors">
+                        <i class="fa-solid fa-shield-halved w-5 text-center text-slate-400"></i><span>Privacy Policy</span>
+                    </button>
+                </div>
+                 <div class="space-y-2 bg-slate-800 rounded-xl p-2 mt-4">
+                     <button id="reset-activation-btn" class="w-full text-left flex items-center gap-4 p-3 rounded-lg hover:bg-slate-700 transition-colors text-yellow-500">
+                        <i class="fa-solid fa-key w-5 text-center"></i><span>Reset Aktivasi</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Navigasi Bawah -->
+        <nav class="w-full max-w-lg mx-auto bg-slate-800/80 backdrop-blur-sm border-t border-slate-700 flex justify-around">
+            <button data-page="page-calculator" class="nav-item flex-1 flex flex-col items-center justify-center p-3 text-slate-400 transition-colors active">
+                <i class="fa-solid fa-calculator text-xl"></i>
+                <span class="text-xs mt-1">Kalkulator</span>
+            </button>
+            <button data-page="page-settings" class="nav-item flex-1 flex flex-col items-center justify-center p-3 text-slate-400 transition-colors">
+                <i class="fa-solid fa-cog text-xl"></i>
+                <span class="text-xs mt-1">Pengaturan</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Modal Generic -->
+    <div id="modal-generic" class="modal fixed inset-0 bg-black bg-opacity-70 flex items-end justify-center z-50 hidden-item">
+        <div class="bg-slate-800 rounded-t-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col transition-transform duration-300 transform translate-y-full">
+            <div class="flex justify-between items-center p-4 border-b border-slate-700">
+                <h3 id="modal-title" class="text-xl font-bold text-white"></h3>
+                <button id="tutup-modal-btn" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div id="modal-content" class="p-6 overflow-y-auto custom-scrollbar space-y-4 text-slate-300">
+                <!-- Konten modal akan diisi oleh JavaScript -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Detail Riwayat -->
+    <div id="modal-riwayat" class="modal fixed inset-0 bg-black bg-opacity-70 flex items-end justify-center z-50 hidden-item">
+         <div class="bg-slate-800 rounded-t-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col transition-transform duration-300 transform translate-y-full">
+            <div class="flex justify-between items-center p-4 border-b border-slate-700">
+                <h3 class="text-xl font-bold text-white">Detail Rekapan</h3>
+                <button id="tutup-modal-riwayat-btn" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div id="modal-riwayat-content" class="p-6 overflow-y-auto custom-scrollbar space-y-4"></div>
+        </div>
+    </div>
+
+    <!-- Confirmation Dialog -->
+    <div id="confirm-dialog" class="confirm-dialog fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-[100] hidden-item">
+        <div class="bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4">
+            <h3 id="confirm-title" class="text-lg font-bold text-white"></h3>
+            <p id="confirm-message" class="text-sm text-slate-300"></p>
+            <div class="flex justify-end gap-3 pt-2">
+                <button id="confirm-cancel-btn" class="px-4 py-2 rounded-lg bg-slate-600 hover:bg-slate-500 text-white font-semibold transition-colors">Batal</button>
+                <button id="confirm-ok-btn" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition-colors">Hapus</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifikasi Toast -->
+    <div id="toast-notification" class="toast fixed bottom-20 right-5 bg-green-500 text-white py-2 px-5 rounded-lg shadow-xl hidden-item"></div>
+    
+    <!-- Input file tersembunyi untuk import -->
+    <input type="file" id="import-file-input" class="hidden" accept=".json">
+
+<script>
+    // IIFE (Immediately Invoked Function Expression) untuk enkapsulasi
+    (() => {
+        // --- DAFTAR LISENSI ---
+        // Anda bisa menambah atau mengubah daftar kode lisensi di sini.
+        const validLicenseKeys = [
+            "PRO-USER-001", "AKTIF-SELAMANYA", "PREMIUM-2025", "GOLD-MEMBER-XYZ", "BEJAJADIGITAL-ID",
+            "USER-A1B2-C3D4", "USER-E5F6-G7H8", "USER-I9J0-K1L2", "USER-M3N4-O5P6", "USER-Q7R8-S9T0",
+            "LUCKY-LICENSE-777", "SECRET-CODE-ALPHA", "BETA-TESTER-01", "EARLY-ADOPTER-99", "VIP-ACCESS-2024",
+            "BD-010125-A", "BD-020125-B", "BD-030125-C", "BD-040125-D", "BD-050125-E",
+            "BD-060125-F", "BD-070125-G", "BD-080125-H", "BD-090125-I", "BD-100125-J",
+            "BD-110125-K", "BD-120125-L", "BD-130125-M", "BD-140125-N", "BD-150125-O",
+            "BD-160125-P", "BD-170125-Q", "BD-180125-R", "BD-190125-S", "BD-200125-T",
+            "BD-210125-U", "BD-220125-V", "BD-230125-W", "BD-240125-X", "BD-250125-Y",
+            "BD-260125-Z", "BD-270125-A1", "BD-280125-B2", "BD-290125-C3", "BD-300125-D4",
+            "BD-310125-E5", "BD-010225-F6", "BD-020225-G7", "BD-030225-H8", "BD-040225-I9",
+            "BD-050225-J0", "BD-060225-K1", "BD-070225-L2", "BD-080225-M3", "BD-090225-N4",
+            "BD-100225-O5", "BD-110225-P6", "BD-120225-Q7", "BD-130225-R8", "BD-140225-S9",
+            "BD-150225-T0", "BD-160225-U1", "BD-170225-V2", "BD-180225-W3", "BD-190225-X4",
+            "BD-200225-Y5", "BD-210225-Z6", "BD-220225-A7", "BD-230225-B8", "BD-240225-C9",
+            "BD-250225-D0", "BD-260225-E1", "BD-270225-F2", "BD-280225-G3", "BD-010325-H4",
+            "KHUSUS-PELANGGAN-SETIA", "BONUS-KODE-2025", "SPESIAL-PROMO-RAMADHAN", "GIVEAWAY-WINNER-007", "PARTNER-RESMI-BD",
+            "KODE-UNIK-1A2B3C", "KODE-UNIK-4D5E6F", "KODE-UNIK-7G8H9I", "KODE-UNIK-1J2K3L", "KODE-UNIK-4M5N6O",
+            "KODE-UNIK-7P8Q9R", "KODE-UNIK-1S2T3U", "KODE-UNIK-4V5W6X", "KODE-UNIK-7Y8Z90", "KODE-UNIK-A1B2C3",
+            "KODE-UNIK-D4E5F6", "KODE-UNIK-G7H8I9", "KODE-UNIK-J0K1L2", "KODE-UNIK-M3N4O5", "KODE-UNIK-P6Q7R8",
+            "KODE-UNIK-S9T0U1", "KODE-UNIK-V2W3X4", "KODE-UNIK-Y5Z6A7", "KODE-UNIK-B8C9D0", "KODE-UNIK-E1F2G3",
+            "250521EMEKD2J2", "1701228", "17012d21"
+        ];
+
+        // --- DOM ELEMENTS ---
+        const dom = {
+            activationScreen: document.getElementById('activation-screen'),
+            licenseInput: document.getElementById('license-input'),
+            activateBtn: document.getElementById('activate-btn'),
+            licenseError: document.getElementById('license-error'),
+            appContainer: document.getElementById('app-container'),
+            pages: document.querySelectorAll('.page'),
+            navItems: document.querySelectorAll('.nav-item'),
+            // Kalkulator
+            daftarPemasukan: document.getElementById('daftar-pemasukan'),
+            tambahPemasukanBtn: document.getElementById('tambah-pemasukan-btn'),
+            daftarPengeluaran: document.getElementById('daftar-pengeluaran'),
+            tambahPengeluaranBtn: document.getElementById('tambah-pengeluaran-btn'),
+            totalPemasukanEl: document.getElementById('total-pemasukan'),
+            totalPengeluaranEl: document.getElementById('total-pengeluaran'),
+            sisaGajiEl: document.getElementById('sisa-gaji'),
+            simpanRekapanBtn: document.getElementById('simpan-rekapan-btn'),
+            // Riwayat
+            daftarRiwayat: document.getElementById('daftar-riwayat'),
+            riwayatKosong: document.getElementById('riwayat-kosong'),
+            // Modal Generic
+            modalGeneric: document.getElementById('modal-generic'),
+            modalTitle: document.getElementById('modal-title'),
+            modalContent: document.getElementById('modal-content'),
+            tutupModalBtn: document.getElementById('tutup-modal-btn'),
+            // Modal Riwayat
+            modalRiwayat: document.getElementById('modal-riwayat'),
+            modalRiwayatContent: document.getElementById('modal-riwayat-content'),
+            tutupModalRiwayatBtn: document.getElementById('tutup-modal-riwayat-btn'),
+            // Pengaturan
+            settingsButtons: document.querySelectorAll('#page-settings button[data-modal]'),
+            resetActivationBtn: document.getElementById('reset-activation-btn'),
+            importFileInput: document.getElementById('import-file-input'),
+            // Notifikasi
+            toast: document.getElementById('toast-notification'),
+            confirmDialog: document.getElementById('confirm-dialog'),
+            confirmTitle: document.getElementById('confirm-title'),
+            confirmMessage: document.getElementById('confirm-message'),
+            confirmOkBtn: document.getElementById('confirm-ok-btn'),
+            confirmCancelBtn: document.getElementById('confirm-cancel-btn'),
+        };
+
+        // --- STATE & HELPERS ---
+        let confirmCallback = null;
+        const parseCurrency = (s) => s ? (parseFloat(String(s).replace(/[^\d]/g, '')) || 0) : 0;
+        const formatCurrency = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n);
+        const formatInputAsCurrency = (el) => {
+            const val = parseCurrency(el.value);
+            el.value = val === 0 ? '' : new Intl.NumberFormat('id-ID').format(val);
+        };
+
+        // --- ACTIVATION LOGIC ---
+        const checkActivation = () => {
+            if (localStorage.getItem('appIsActivated') === 'true') {
+                showApp();
+            } else {
+                showActivationScreen();
+            }
+        };
+
+        const showApp = () => {
+            dom.activationScreen.classList.add('hidden');
+            dom.appContainer.classList.remove('hidden');
+            dom.appContainer.classList.add('flex'); // Menggunakan flex untuk layout
+            initApp(); // Inisialisasi aplikasi utama setelah aktivasi
+        };
+
+        const showActivationScreen = () => {
+            dom.activationScreen.classList.remove('hidden');
+            dom.appContainer.classList.add('hidden');
+            dom.appContainer.classList.remove('flex');
+        };
+
+        const handleActivation = () => {
+            const key = dom.licenseInput.value.trim();
+            if (validLicenseKeys.includes(key)) {
+                localStorage.setItem('appIsActivated', 'true');
+                showToast("Aktivasi berhasil!");
+                showApp();
+            } else {
+                dom.licenseError.classList.remove('hidden');
+                dom.licenseInput.classList.add('shake');
+                setTimeout(() => {
+                    dom.licenseInput.classList.remove('shake');
+                }, 500);
+            }
+        };
+
+        const resetActivation = () => {
+            showConfirmation("Reset Aktivasi", "Anda yakin ingin mereset status aktivasi? Anda akan memerlukan kode lisensi lagi untuk masuk.", () => {
+                localStorage.removeItem('appIsActivated');
+                hideConfirmation();
+                showToast("Aktivasi telah direset.");
+                // Reload the page to show activation screen
+                setTimeout(() => window.location.reload(), 1000);
+            });
+        };
+
+        // --- NAVIGATION ---
+        const switchPage = (pageId) => {
+            dom.pages.forEach(page => page.classList.toggle('active', page.id === pageId));
+            dom.navItems.forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
+        };
+
+        // --- MODAL & NOTIFICATION ---
+        const showToast = (message, isError = false) => {
+            dom.toast.textContent = message;
+            dom.toast.className = `toast fixed bottom-20 right-5 py-2 px-5 rounded-lg shadow-xl ${isError ? 'bg-red-500' : 'bg-green-500'} text-white`;
+            dom.toast.classList.remove('hidden-item');
+            setTimeout(() => dom.toast.classList.add('hidden-item'), 3000);
+        };
+        
+        const showConfirmation = (title, message, onConfirm) => {
+            dom.confirmTitle.textContent = title;
+            dom.confirmMessage.textContent = message;
+            confirmCallback = onConfirm;
+            dom.confirmDialog.classList.remove('hidden-item');
+        };
+
+        const hideConfirmation = () => {
+            dom.confirmDialog.classList.add('hidden-item');
+            confirmCallback = null;
+        };
+
+        const openModal = (modalElement) => {
+            modalElement.classList.remove('hidden-item');
+            setTimeout(() => modalElement.querySelector('.bg-slate-800').classList.remove('translate-y-full'), 10);
+        };
+        
+        const closeModal = (modalElement) => {
+            modalElement.querySelector('.bg-slate-800').classList.add('translate-y-full');
+            modalElement.addEventListener('transitionend', () => modalElement.classList.add('hidden-item'), { once: true });
+        };
+        
+        // --- DATA MANAGEMENT ---
+        const getRiwayat = () => JSON.parse(localStorage.getItem('riwayatGaji') || '[]');
+        const saveRiwayat = (riwayat) => localStorage.setItem('riwayatGaji', JSON.stringify(riwayat));
+        
+        const backupData = () => {
+            const data = localStorage.getItem('riwayatGaji');
+            if (!data || data === '[]') {
+                showToast("Tidak ada data untuk di-backup.", true);
+                return;
+            }
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `backup-gaji-${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("Backup data berhasil diunduh.");
+        };
+
+        const exportToExcel = () => {
+            const riwayat = getRiwayat();
+            if (riwayat.length === 0) {
+                showToast("Tidak ada data riwayat untuk diekspor.", true);
+                return;
+            }
+
+            const currencySymbolInput = document.getElementById('excel-currency-symbol');
+            const currencySymbol = currencySymbolInput ? currencySymbolInput.value.trim() : 'Rp';
+            const currencyFormat = `"${currencySymbol}" #,##0`;
+
+            const dataForExcel = [["Tanggal Rekap", "Keterangan", "Tipe", "Jumlah"]];
+            
+            const sortedRiwayat = [...getRiwayat()].reverse();
+            sortedRiwayat.forEach(item => {
+                const tanggalRekap = new Date(item.tanggal).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+                let isFirstRow = true;
+                if (Array.isArray(item.pemasukan)) {
+                    item.pemasukan.forEach(p => {
+                        dataForExcel.push([isFirstRow ? tanggalRekap : "", p.nama, "Pemasukan", p.jumlah]);
+                        isFirstRow = false;
+                    });
+                } else {
+                    dataForExcel.push([isFirstRow ? tanggalRekap : "", "Pemasukan Gaji", "Pemasukan", item.pemasukan]);
+                    isFirstRow = false;
+                }
+                item.pengeluaran.forEach(p => {
+                    dataForExcel.push([isFirstRow ? tanggalRekap : "", p.nama, "Pengeluaran", p.jumlah]);
+                    isFirstRow = false;
+                });
+                dataForExcel.push(["", "Total Pengeluaran", "Ringkasan", item.totalPengeluaran]);
+                dataForExcel.push(["", "Sisa Gaji", "Ringkasan", item.sisaGaji]);
+                dataForExcel.push([]);
+            });
+
+            const worksheet = XLSX.utils.aoa_to_sheet(dataForExcel);
+            const range = XLSX.utils.decode_range(worksheet['!ref']);
+            for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+                const cell_address = { c: 3, r: R };
+                const cell_ref = XLSX.utils.encode_cell(cell_address);
+                if (worksheet[cell_ref] && worksheet[cell_ref].t === 'n') {
+                    worksheet[cell_ref].z = currencyFormat;
+                }
+            }
+            worksheet['!cols'] = [ { wch: 20 }, { wch: 35 }, { wch: 15 }, { wch: 20 } ];
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Gaji");
+            XLSX.writeFile(workbook, "Laporan_Gaji.xlsx");
+            showToast("Laporan Excel berhasil dibuat.");
+        };
+
+        const importData = () => dom.importFileInput.click();
+
+        const handleImportFile = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (!Array.isArray(importedData)) throw new Error("Format file tidak valid.");
+                    showConfirmation("Konfirmasi Impor", "Ini akan menimpa semua data riwayat yang ada. Lanjutkan?", () => {
+                        saveRiwayat(importedData);
+                        renderRiwayat();
+                        showToast("Data berhasil diimpor.");
+                        hideConfirmation();
+                        closeModal(dom.modalGeneric);
+                    });
+                } catch (error) {
+                    showToast("Gagal mengimpor file. Pastikan file valid.", true);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        };
+
+        const hapusSemuaData = () => {
+            showConfirmation("Hapus Semua Data", "Anda yakin ingin menghapus semua riwayat? Tindakan ini tidak dapat diurungkan.", () => {
+                saveRiwayat([]);
+                renderRiwayat();
+                showToast("Semua data berhasil dihapus.");
+                hideConfirmation();
+                closeModal(dom.modalGeneric);
+            });
+        };
+
+        // --- KALKULATOR & RIWAYAT LOGIC ---
+        const hitungTotal = () => {
+            let totalPemasukan = 0;
+            document.querySelectorAll('.pemasukan-jumlah').forEach(input => totalPemasukan += parseCurrency(input.value));
+            
+            let totalPengeluaran = 0;
+            document.querySelectorAll('.pengeluaran-jumlah').forEach(input => totalPengeluaran += parseCurrency(input.value));
+            
+            const sisaGaji = totalPemasukan - totalPengeluaran;
+            dom.totalPemasukanEl.textContent = formatCurrency(totalPemasukan);
+            dom.totalPengeluaranEl.textContent = formatCurrency(totalPengeluaran);
+            dom.sisaGajiEl.textContent = formatCurrency(sisaGaji);
+            dom.sisaGajiEl.classList.toggle('text-green-400', sisaGaji >= 0);
+            dom.sisaGajiEl.classList.toggle('text-red-400', sisaGaji < 0);
+        };
+        
+        const resetForm = () => {
+            dom.daftarPemasukan.innerHTML = '';
+            dom.daftarPengeluaran.innerHTML = '';
+            tambahPemasukan();
+            tambahPengeluaran();
+            hitungTotal();
+        };
+
+        const tambahPemasukan = () => {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'flex items-center gap-2';
+            itemEl.innerHTML = `
+                <input type="text" class="pemasukan-nama w-1/2 bg-slate-800 border-slate-700 border rounded-lg py-2 px-3 text-white focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="Keterangan Pemasukan">
+                <div class="relative w-1/2">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 text-sm">Rp</span>
+                    <input type="text" class="pemasukan-jumlah w-full bg-slate-800 border-slate-700 border rounded-lg py-2 pl-9 pr-3 text-white focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="0" inputmode="numeric">
+                </div>
+                <button class="hapus-pemasukan-btn flex-shrink-0 bg-red-600 hover:bg-red-700 text-white w-9 h-9 rounded-lg transition-colors flex items-center justify-center">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>`;
+            const amountInput = itemEl.querySelector('.pemasukan-jumlah');
+            amountInput.addEventListener('input', () => { formatInputAsCurrency(amountInput); hitungTotal(); });
+            itemEl.querySelector('.pemasukan-nama').addEventListener('input', hitungTotal);
+            dom.daftarPemasukan.appendChild(itemEl);
+        };
+
+        const tambahPengeluaran = () => {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'flex items-center gap-2';
+            itemEl.innerHTML = `
+                <input type="text" class="pengeluaran-nama w-1/2 bg-slate-800 border-slate-700 border rounded-lg py-2 px-3 text-white focus:ring-1 focus:ring-green-500 focus:outline-none" placeholder="Keterangan Pengeluaran">
+                <div class="relative w-1/2">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 text-sm">Rp</span>
+                    <input type="text" class="pengeluaran-jumlah w-full bg-slate-800 border-slate-700 border rounded-lg py-2 pl-9 pr-3 text-white focus:ring-1 focus:ring-green-500 focus:outline-none" placeholder="0" inputmode="numeric">
+                </div>
+                <button class="hapus-pengeluaran-btn flex-shrink-0 bg-red-600 hover:bg-red-700 text-white w-9 h-9 rounded-lg transition-colors flex items-center justify-center">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>`;
+            const amountInput = itemEl.querySelector('.pengeluaran-jumlah');
+            amountInput.addEventListener('input', () => { formatInputAsCurrency(amountInput); hitungTotal(); });
+            itemEl.querySelector('.pengeluaran-nama').addEventListener('input', hitungTotal);
+            dom.daftarPengeluaran.appendChild(itemEl);
+        };
+
+        const simpanRekapan = () => {
+            const pemasukan = Array.from(document.querySelectorAll('#daftar-pemasukan > div')).map(item => ({
+                nama: item.querySelector('.pemasukan-nama').value.trim(),
+                jumlah: parseCurrency(item.querySelector('.pemasukan-jumlah').value)
+            })).filter(p => p.nama && p.jumlah > 0);
+
+            if (pemasukan.length === 0) {
+                showToast("Pemasukan tidak boleh kosong.", true);
+                return;
+            }
+
+            const pengeluaran = Array.from(document.querySelectorAll('#daftar-pengeluaran > div')).map(item => ({
+                nama: item.querySelector('.pengeluaran-nama').value.trim(),
+                jumlah: parseCurrency(item.querySelector('.pengeluaran-jumlah').value)
+            })).filter(p => p.nama && p.jumlah > 0);
+
+            const totalPemasukan = pemasukan.reduce((sum, p) => sum + p.jumlah, 0);
+            const totalPengeluaran = pengeluaran.reduce((sum, p) => sum + p.jumlah, 0);
+
+            const rekapanBaru = {
+                id: Date.now(),
+                tanggal: new Date().toISOString(),
+                pemasukan,
+                pengeluaran,
+                totalPemasukan,
+                totalPengeluaran,
+                sisaGaji: totalPemasukan - totalPengeluaran
+            };
+            const riwayat = getRiwayat();
+            riwayat.unshift(rekapanBaru);
+            saveRiwayat(riwayat);
+            renderRiwayat();
+            showToast("Rekapan berhasil disimpan.");
+            resetForm();
+        };
+
+        const renderRiwayat = () => {
+            const riwayat = getRiwayat();
+            dom.daftarRiwayat.innerHTML = '';
+            dom.riwayatKosong.classList.toggle('hidden', riwayat.length > 0);
+            if (riwayat.length === 0) return;
+
+            const grouped = riwayat.reduce((acc, item) => {
+                const date = new Date(item.tanggal);
+                const key = `${date.getFullYear()}-${date.getMonth()}`;
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(item);
+                return acc;
+            }, {});
+
+            Object.keys(grouped).sort((a,b) => new Date(b.split('-')[0], b.split('-')[1]) - new Date(a.split('-')[0], a.split('-')[1])).forEach(key => {
+                const items = grouped[key];
+                const date = new Date(items[0].tanggal);
+                const monthName = date.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+                
+                const monthHeader = document.createElement('h3');
+                monthHeader.className = 'text-md font-semibold text-purple-300 pt-2';
+                monthHeader.textContent = monthName;
+                dom.daftarRiwayat.appendChild(monthHeader);
+
+                items.forEach(item => {
+                    const tgl = new Date(item.tanggal).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+                    const sisaGajiKelas = item.sisaGaji >= 0 ? 'text-green-400' : 'text-red-400';
+                    const riwayatItem = document.createElement('div');
+                    riwayatItem.className = 'bg-slate-800 p-3 rounded-xl flex justify-between items-center';
+                    riwayatItem.innerHTML = `
+                        <div>
+                            <p class="font-semibold text-white">Rekapan ${tgl}</p>
+                            <p class="text-sm ${sisaGajiKelas}">${formatCurrency(item.sisaGaji)}</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button class="lihat-detail-btn bg-blue-600/50 hover:bg-blue-600/80 text-white font-semibold px-3 py-1 rounded-lg transition-colors text-sm" data-id="${item.id}">Detail</button>
+                            <button class="hapus-riwayat-btn text-red-500 hover:text-red-400 text-lg" data-id="${item.id}"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>`;
+                    dom.daftarRiwayat.appendChild(riwayatItem);
+                });
+            });
+        };
+        
+        const tampilkanDetailRiwayat = (id) => {
+            const item = getRiwayat().find(r => r.id == id);
+            if (!item) return;
+
+            const pemasukanListHTML = Array.isArray(item.pemasukan)
+                ? item.pemasukan.map(p => `<li class="flex justify-between"><span>${p.nama || 'Pemasukan'}:</span><span class="font-mono font-semibold">${formatCurrency(p.jumlah)}</span></li>`).join('')
+                : `<li class="flex justify-between"><span>Pemasukan:</span><span class="font-mono font-semibold">${formatCurrency(item.pemasukan)}</span></li>`;
+            
+            const totalPemasukan = item.totalPemasukan || item.pemasukan;
+
+            dom.modalRiwayatContent.innerHTML = `
+                <div class="space-y-2 text-sm">
+                    <p class="flex justify-between"><span>Tanggal:</span><span class="font-semibold">${new Date(item.tanggal).toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' })}</span></p>
+                </div>
+                <hr class="border-slate-700 my-3">
+                <div>
+                    <h4 class="font-semibold mb-2 text-blue-300">Rincian Pemasukan:</h4>
+                    <ul class="space-y-1 text-sm text-slate-300">${pemasukanListHTML}</ul>
+                </div>
+                <hr class="border-slate-700 my-3">
+                <div>
+                    <h4 class="font-semibold mb-2 text-green-300">Rincian Pengeluaran:</h4>
+                    <ul class="space-y-1 text-sm text-slate-300">
+                        ${item.pengeluaran.length > 0 ? item.pengeluaran.map(p => `<li class="flex justify-between"><span>${p.nama}:</span><span class="font-mono font-semibold">${formatCurrency(p.jumlah)}</span></li>`).join('') : '<li>Tidak ada pengeluaran.</li>'}
+                    </ul>
+                </div>
+                <hr class="border-slate-700 my-3">
+                <div class="space-y-2 text-md">
+                     <p class="flex justify-between text-blue-300"><span>Total Pemasukan:</span><span class="font-semibold">${formatCurrency(totalPemasukan)}</span></p>
+                     <p class="flex justify-between text-green-300"><span>Total Pengeluaran:</span><span class="font-semibold">${formatCurrency(item.totalPengeluaran)}</span></p>
+                     <p class="flex justify-between text-white font-bold"><span>Sisa Gaji:</span><span class="font-bold ${item.sisaGaji < 0 ? 'text-red-400' : 'text-green-400'}">${formatCurrency(item.sisaGaji)}</span></p>
+                </div>
+                `;
+            openModal(dom.modalRiwayat);
+        };
+
+        // --- MODAL CONTENTS ---
+        const modalContents = {
+            "modal-backup": {
+                title: "Backup & Restore",
+                content: `
+                    <p>Amankan atau pulihkan data riwayat Anda. Anda juga bisa mengekspor data ke format Excel untuk dicatat.</p>
+                    <div class="space-y-3 pt-4">
+                        <h4 class="font-bold text-white">Pengaturan Ekspor Excel</h4>
+                        <div>
+                            <label for="excel-currency-symbol" class="block text-sm font-medium text-slate-300 mb-1">Simbol Mata Uang</label>
+                            <input type="text" id="excel-currency-symbol" class="w-full bg-slate-700 border-slate-600 border rounded-lg py-2 px-3 text-white focus:ring-1 focus:ring-teal-500 focus:outline-none" placeholder="Contoh: Rp, USD" value="Rp">
+                        </div>
+                        <h4 class="font-bold text-white pt-2">Tindakan</h4>
+                        <button id="export-excel-btn" class="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-xl transition-colors"><i class="fa-solid fa-file-excel"></i>Export ke Excel (.xlsx)</button>
+                        <h4 class="font-bold text-white pt-2">Backup & Import (JSON)</h4>
+                        <button id="backup-btn" class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-colors"><i class="fa-solid fa-download"></i>Backup Data</button>
+                        <button id="import-btn" class="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl transition-colors"><i class="fa-solid fa-upload"></i>Import Data</button>
+                        <hr class="border-slate-600 !my-4">
+                        <h4 class="font-bold text-white">Manajemen Data</h4>
+                        <button id="delete-all-btn" class="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl transition-colors"><i class="fa-solid fa-trash-alt"></i>Hapus Semua Data</button>
+                    </div>
+                `
+            },
+            "modal-usage": {
+                title: "Cara Penggunaan",
+                content: `
+                    <h4 class="font-bold text-white">1. Masukkan Pemasukan</h4>
+                    <p class="pl-4 pb-2">Klik "Tambah Pemasukan" untuk menambahkan setiap sumber pemasukan Anda, lengkap dengan keterangan dan jumlahnya.</p>
+                    <h4 class="font-bold text-white">2. Tambah Pengeluaran</h4>
+                    <p class="pl-4 pb-2">Klik "Tambah Pengeluaran" untuk menambahkan setiap item pengeluaran Anda.</p>
+                    <h4 class="font-bold text-white">3. Lihat Ringkasan</h4>
+                    <p class="pl-4 pb-2">Total pemasukan, pengeluaran, dan sisa gaji akan terhitung secara otomatis.</p>
+                    <h4 class="font-bold text-white">4. Simpan Rekapan</h4>
+                    <p class="pl-4 pb-2">Jika sudah selesai, klik "Simpan Rekapan". Perhitungan akan disimpan ke riwayat dan form akan direset otomatis.</p>
+                    <h4 class="font-bold text-white">5. Kelola di Pengaturan</h4>
+                    <p class="pl-4 pb-2">Gunakan menu Pengaturan untuk mengekspor ke Excel (dengan simbol mata uang custom), mem-backup, me-restore, atau menghapus data riwayat Anda.</p>
+                `
+            },
+            "modal-about": {
+                title: "Tentang Aplikasi",
+                content: `
+                    <p class="text-center"><i class="fa-solid fa-wallet text-4xl text-indigo-400"></i></p>
+                    <p class="text-center font-bold text-white text-lg mt-2">Kalkulator Gaji v3.7</p>
+                    <p>Aplikasi ini dibuat untuk membantu Anda mengelola dan melacak keuangan pribadi dengan mudah dan cepat. Semua data disimpan secara lokal di perangkat Anda dan tidak dikirim ke server mana pun.</p>
+                    <p class="text-sm text-center mt-4 text-slate-400">Dibuat dengan <i class="fa-solid fa-heart text-red-500"></i> untuk manajemen keuangan yang lebih baik.</p>
+                `
+            },
+            "modal-privacy": {
+                title: "Privacy Policy",
+                content: `
+                    <p>Aplikasi ini beroperasi sepenuhnya di sisi klien (client-side). Ini berarti:</p>
+                    <ul class="list-disc list-inside space-y-2 mt-2">
+                        <li><strong class="text-white">Tidak Ada Pengumpulan Data:</strong> Kami tidak mengumpulkan, menyimpan, atau mengirim data pribadi atau keuangan Anda ke server mana pun.</li>
+                        <li><strong class="text-white">Penyimpanan Lokal:</strong> Semua data riwayat yang Anda simpan hanya ada di dalam penyimpanan lokal (localStorage) browser di perangkat Anda.</li>
+                        <li><strong class="text-white">Kendali Penuh:</strong> Anda memiliki kendali penuh atas data Anda. Anda dapat menghapusnya atau mengekspornya kapan saja melalui menu Pengaturan.</li>
+                    </ul>
+                    <p class="mt-4">Keamanan dan privasi Anda adalah prioritas kami.</p>
+                `
+            }
+        };
+
+        // --- EVENT LISTENERS ---
+        const addAppEventListeners = () => {
+            dom.navItems.forEach(item => item.addEventListener('click', () => switchPage(item.dataset.page)));
+            dom.tambahPemasukanBtn.addEventListener('click', tambahPemasukan);
+            dom.tambahPengeluaranBtn.addEventListener('click', tambahPengeluaran);
+            dom.simpanRekapanBtn.addEventListener('click', simpanRekapan);
+            
+            dom.daftarPemasukan.addEventListener('click', (e) => {
+                const deleteButton = e.target.closest('.hapus-pemasukan-btn');
+                if (deleteButton) {
+                    if (dom.daftarPemasukan.children.length > 1) {
+                        deleteButton.parentElement.remove();
+                        hitungTotal();
+                    } else {
+                        showToast("Minimal harus ada satu baris pemasukan.", true);
+                    }
+                }
+            });
+
+            dom.daftarPengeluaran.addEventListener('click', (e) => {
+                const deleteButton = e.target.closest('.hapus-pengeluaran-btn');
+                if (deleteButton) {
+                     if (dom.daftarPengeluaran.children.length > 1) {
+                        deleteButton.parentElement.remove();
+                        hitungTotal();
+                    } else {
+                        showToast("Minimal harus ada satu baris pengeluaran.", true);
+                    }
+                }
+            });
+
+            dom.daftarRiwayat.addEventListener('click', (e) => {
+                const detailBtn = e.target.closest('.lihat-detail-btn');
+                if (detailBtn) tampilkanDetailRiwayat(detailBtn.dataset.id);
+                
+                const hapusBtn = e.target.closest('.hapus-riwayat-btn');
+                if (hapusBtn) {
+                    const idToDelete = hapusBtn.dataset.id;
+                    showConfirmation("Hapus Riwayat", "Anda yakin ingin menghapus rekapan ini?", () => {
+                        const updatedRiwayat = getRiwayat().filter(item => item.id != idToDelete);
+                        saveRiwayat(updatedRiwayat);
+                        renderRiwayat();
+                        showToast("Rekapan telah dihapus.");
+                        hideConfirmation();
+                    });
+                }
+            });
+
+            dom.settingsButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const modalId = button.dataset.modal;
+                    const data = modalContents[modalId];
+                    if (data) {
+                        dom.modalTitle.textContent = data.title;
+                        dom.modalContent.innerHTML = data.content;
+                        openModal(dom.modalGeneric);
+                    }
+                });
+            });
+
+            dom.modalContent.addEventListener('click', (e) => {
+                const targetButton = e.target.closest('button');
+                if (!targetButton) return;
+                if (targetButton.id === 'backup-btn') backupData();
+                if (targetButton.id === 'import-btn') importData();
+                if (targetButton.id === 'delete-all-btn') hapusSemuaData();
+                if (targetButton.id === 'export-excel-btn') exportToExcel();
+            });
+
+            dom.importFileInput.addEventListener('change', handleImportFile);
+            dom.tutupModalBtn.addEventListener('click', () => closeModal(dom.modalGeneric));
+            dom.tutupModalRiwayatBtn.addEventListener('click', () => closeModal(dom.modalRiwayat));
+            dom.confirmCancelBtn.addEventListener('click', hideConfirmation);
+            dom.confirmOkBtn.addEventListener('click', () => {
+                if (typeof confirmCallback === 'function') confirmCallback();
+            });
+            dom.resetActivationBtn.addEventListener('click', resetActivation);
+        };
+        
+        // --- INITIALIZATION ---
+        const initApp = () => {
+            switchPage('page-calculator');
+            resetForm();
+            renderRiwayat();
+            addAppEventListeners();
+        };
+
+        // --- GLOBAL INITIALIZATION ---
+        dom.activateBtn.addEventListener('click', handleActivation);
+        dom.licenseInput.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') handleActivation();
+        });
+        checkActivation();
+
+    })();
+
+    // Daftarkan service worker setelah halaman dimuat sepenuhnya
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./service-worker.js')
+                .then(reg => console.log('SW berhasil:', reg))
+                .catch(err => console.error('SW gagal:', err));
+        });
+    }
+	
+</script>
+ <script>
+    // URL redirect target
+        const redirectUrl = "https://lynk.id/muslimtechpreneur";
+
+        // 1. Disable klik kanan dan drag image
+        document.addEventListener("contextmenu", e => e.preventDefault());
+        document.addEventListener("dragstart", e => e.preventDefault());
+        document.addEventListener("mousedown", e => {
+          if (e.button === 2 || e.button === 1) e.preventDefault();
+        });
+
+        // 2. Disable shortcut keyboard untuk Inspect & Save Source
+        document.addEventListener("keydown", function(e) {
+          if (
+            e.key === "F12" ||
+            (e.ctrlKey && e.shiftKey && ["I", "J", "C", "K"].includes(e.key.toUpperCase())) ||
+            (e.ctrlKey && ["U", "S"].includes(e.key.toUpperCase()))
+          ) {
+            e.preventDefault();
+            window.location.href = redirectUrl;
+          }
+        });
+
+        // 3. Deteksi DevTools via console.log trick
+        (function detectConsoleOpen() {
+          const element = new Image();
+          Object.defineProperty(element, "id", {
+            get: function () {
+              window.location.replace(redirectUrl);
+            }
+          });
+          setInterval(() => {
+            console.log(element);
+          }, 1000);
+        })();
+
+        // 4. (Opsional) Cegah download gambar via klik kanan Save As
+        document.addEventListener("DOMContentLoaded", () => {
+          document.querySelectorAll("img").forEach(img => {
+            img.setAttribute("draggable", "false");
+            img.oncontextmenu = e => e.preventDefault();
+          });
+        });
+
+// Daftarkan service worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js')
+    .then(reg => console.log('SW berhasil:', reg))
+    .catch(err => console.error('SW gagal:', err));
+}</script>
+
+
+</body>
+</html>
